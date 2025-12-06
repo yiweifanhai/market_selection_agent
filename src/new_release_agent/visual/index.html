@@ -1,0 +1,337 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>NR/BS 对比可视化</title>
+  <style>
+    :root {
+      --bg: #0f172a; /* slate-900 */
+      --panel: #111827; /* gray-900 */
+      --panel-2: #1f2937; /* gray-800 */
+      --text: #e5e7eb; /* gray-200 */
+      --muted: #9ca3af; /* gray-400 */
+      --accent: #22d3ee; /* cyan-400 */
+      --accent-2: #a78bfa; /* violet-400 */
+      --border: #374151; /* gray-700 */
+      --danger: #ef4444; /* red-500 */
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji"; background: var(--bg); color: var(--text); }
+    header { padding: 16px 24px; border-bottom: 1px solid var(--border); background: linear-gradient(180deg, rgba(34,211,238,0.06), rgba(167,139,250,0.06)), var(--panel); position: sticky; top: 0; z-index: 10; }
+    header h1 { margin: 0; font-size: 18px; letter-spacing: 0.5px; }
+    .sub { color: var(--muted); font-size: 12px; margin-top: 6px; }
+
+    .uploader { display: flex; gap: 12px; align-items: center; margin-top: 12px; }
+    .uploader input[type="file"] { color: var(--text); }
+    .btn { background: var(--panel-2); color: var(--text); border: 1px solid var(--border); padding: 8px 12px; border-radius: 8px; cursor: pointer; }
+    .btn:hover { border-color: var(--accent); box-shadow: 0 0 0 2px rgba(34,211,238,0.2); }
+    .stat { margin-left: auto; color: var(--muted); font-size: 12px; }
+    .searchbar { display: flex; gap: 10px; align-items: center; margin-top: 12px; }
+    .searchbar input[type="text"] { background: var(--panel-2); color: var(--text); border: 1px solid var(--border); padding: 8px 10px; border-radius: 8px; width: 220px; }
+    .btn[disabled] { opacity: 0.6; cursor: not-allowed; }
+
+    main { padding: 16px 24px; }
+    .row { display: grid; grid-template-columns: 1.2fr 1fr 1fr; gap: 12px; padding: 12px; border: 1px solid var(--border); border-radius: 10px; background: var(--panel); margin-bottom: 12px; }
+    .col { border: 1px solid var(--border); border-radius: 8px; background: var(--panel-2); overflow: hidden; display: flex; flex-direction: column; }
+    .col h3 { margin: 0; padding: 8px 10px; font-size: 13px; color: var(--accent); border-bottom: 1px solid var(--border); background: rgba(34,211,238,0.06); }
+
+    .new-info { display: grid; grid-template-columns: 140px 1fr; gap: 10px; padding: 10px; }
+    .product-img { width: 100%; height: 140px; object-fit: cover; background: #0b1220; border: 1px solid var(--border); border-radius: 6px; }
+    .pname { font-size: 14px; margin: 0 0 6px; }
+    .meta { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; font-size: 12px; color: var(--muted); }
+    .tag { display: inline-block; padding: 2px 6px; border: 1px solid var(--border); border-radius: 999px; font-size: 11px; color: var(--accent-2); }
+
+    .list { display: flex; gap: 10px; padding: 10px; overflow-x: auto; overscroll-behavior-inline: contain; }
+    .card { min-width: 160px; max-width: 220px; border: 1px solid var(--border); border-radius: 8px; background: #0b1220; display: flex; flex-direction: column; }
+    .card img { width: 100%; height: 120px; object-fit: cover; border-bottom: 1px solid var(--border); }
+    .card .title { padding: 8px; font-size: 12px; color: var(--text); }
+
+    .error { color: var(--danger); font-size: 12px; margin-top: 8px; }
+    .footer { text-align: center; color: var(--muted); font-size: 12px; padding: 12px 24px; }
+
+    @media (max-width: 1024px) {
+      .row { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>NR/BS 对比可视化</h1>
+    <div class="sub">上传 JSONL 文件（每行一条记录，包含 new / higher_old_products / lower_old_products）后，逐行展示三块内容：新产品信息、排名更高产品、排名更低产品。</div>
+
+    <div class="uploader">
+      <input id="fileInput" type="file" accept=".jsonl,.txt,application/json" />
+      <button id="clearBtn" class="btn">清空结果</button>
+      <div id="stat" class="stat">未加载数据</div>
+    </div>
+    <div class="searchbar">
+      <input id="asinInput" type="text" placeholder="输入 ASIN（10位）" />
+      <button id="asinSearchBtn" class="btn" disabled>搜索</button>
+      <button id="asinResetBtn" class="btn">清空筛选</button>
+    </div>
+    <div id="error" class="error" style="display:none"></div>
+  </header>
+
+  <main id="container"></main>
+
+  <div class="footer">© 可视化工具 · 支持本地离线使用 · 将 JSONL 文件拖拽或选择上传</div>
+
+  <script>
+    const fileInput = document.getElementById('fileInput');
+    const container = document.getElementById('container');
+    const stat = document.getElementById('stat');
+    const errorBox = document.getElementById('error');
+    const clearBtn = document.getElementById('clearBtn');
+    const asinInput = document.getElementById('asinInput');
+    const asinSearchBtn = document.getElementById('asinSearchBtn');
+    const asinResetBtn = document.getElementById('asinResetBtn');
+
+    let fileLines = null;
+    let debounceTimer = null;
+    const cache = new Map();
+
+    clearBtn.addEventListener('click', () => {
+      container.innerHTML = '';
+      stat.textContent = '未加载数据';
+      errorBox.style.display = 'none';
+      fileInput.value = '';
+      fileLines = null;
+      cache.clear();
+      asinInput.value = '';
+      asinSearchBtn.disabled = true;
+    });
+
+    fileInput.addEventListener('change', async (e) => {
+      const file = e.target.files?.[0];
+      if (!file) return;
+      errorBox.style.display = 'none';
+      stat.textContent = '读取中…';
+      try {
+        const text = await file.text();
+        fileLines = text.split(/\r?\n/).filter(l => l.trim().length > 0);
+        container.innerHTML = '';
+        cache.clear();
+        stat.textContent = `文件已读取，共 ${fileLines.length} 行。请输入 ASIN 搜索。`;
+      } catch (err) {
+        errorBox.textContent = '读取文件失败：' + (err?.message || String(err));
+        errorBox.style.display = 'block';
+        stat.textContent = '未加载数据';
+      }
+    });
+
+    function render(records) {
+      container.innerHTML = '';
+      if (!Array.isArray(records) || records.length === 0) return;
+      const frag = document.createDocumentFragment();
+      records.forEach((rec, idx) => {
+        const row = document.createElement('div');
+        row.className = 'row';
+        // 列 1：新产品信息
+        const colNew = document.createElement('div');
+        colNew.className = 'col';
+        const titleNew = document.createElement('h3');
+        titleNew.textContent = `新产品 (第 ${idx+1} 行)`;
+        colNew.appendChild(titleNew);
+        const newInfo = document.createElement('div');
+        newInfo.className = 'new-info';
+        const newData = rec?.new || {};
+        const img = document.createElement('img');
+        img.className = 'product-img';
+        img.src = safeStr(newData.image_url) || '';
+        img.alt = safeStr(newData.product_name) || safeStr(newData.asin) || 'image';
+        img.onerror = () => { img.style.display = 'none'; };
+        const infoBox = document.createElement('div');
+        const pname = document.createElement('p');
+        pname.className = 'pname';
+        pname.textContent = safeStr(newData.product_name) || '(无标题)';
+        const meta = document.createElement('div');
+        meta.className = 'meta';
+        meta.innerHTML = `
+          <div><span class="tag">ASIN</span> ${safeStr(newData.asin) || '-'}</div>
+          <div><span class="tag">类目1</span> ${safeStr(newData.category_display_name_1) || '-'}</div>
+          <div><span class="tag">类目2</span> ${safeStr(newData.category_display_name_2) || '-'}</div>
+          <div><span class="tag">类目3</span> ${safeStr(newData.category_display_name_3) || '-'}</div>
+        `;
+        newInfo.appendChild(img);
+        infoBox.appendChild(pname);
+        infoBox.appendChild(meta);
+        newInfo.appendChild(infoBox);
+        colNew.appendChild(newInfo);
+
+        // 列 2：更高排名旧产品
+        const colHigher = document.createElement('div');
+        colHigher.className = 'col';
+        const titleHigher = document.createElement('h3');
+        titleHigher.textContent = '更高排名产品';
+        colHigher.appendChild(titleHigher);
+        const listHigher = document.createElement('div');
+        listHigher.className = 'list';
+        const higherArr = Array.isArray(rec?.higher_old_products) ? rec.higher_old_products : [];
+        if (higherArr.length === 0) {
+          const empty = document.createElement('div');
+          empty.style.color = 'var(--muted)';
+          empty.style.fontSize = '12px';
+          empty.style.padding = '10px';
+          empty.textContent = '无数据';
+          listHigher.appendChild(empty);
+        } else {
+          higherArr.forEach(p => listHigher.appendChild(productCard(p)));
+        }
+        colHigher.appendChild(listHigher);
+
+        // 列 3：更低排名旧产品
+        const colLower = document.createElement('div');
+        colLower.className = 'col';
+        const titleLower = document.createElement('h3');
+        titleLower.textContent = '更低排名产品';
+        colLower.appendChild(titleLower);
+        const listLower = document.createElement('div');
+        listLower.className = 'list';
+        const lowerArr = Array.isArray(rec?.lower_old_products) ? rec.lower_old_products : [];
+        if (lowerArr.length === 0) {
+          const empty = document.createElement('div');
+          empty.style.color = 'var(--muted)';
+          empty.style.fontSize = '12px';
+          empty.style.padding = '10px';
+          empty.textContent = '无数据';
+          listLower.appendChild(empty);
+        } else {
+          lowerArr.forEach(p => listLower.appendChild(productCard(p)));
+        }
+        colLower.appendChild(listLower);
+
+        row.appendChild(colNew);
+        row.appendChild(colHigher);
+        row.appendChild(colLower);
+        frag.appendChild(row);
+      });
+      container.appendChild(frag);
+    }
+
+    function productCard(p) {
+      const card = document.createElement('div');
+      card.className = 'card';
+      const img = document.createElement('img');
+      img.src = safeStr(p?.image_url) || '';
+      img.alt = safeStr(p?.product_name) || safeStr(p?.asin) || 'image';
+      img.onerror = () => { img.style.display = 'none'; };
+      const title = document.createElement('div');
+      title.className = 'title';
+      title.textContent = safeStr(p?.product_name) || '(无标题)';
+      card.appendChild(img);
+      card.appendChild(title);
+      return card;
+    }
+
+    function safeStr(v) {
+      if (v === null || v === undefined) return '';
+      return String(v);
+    }
+
+    function validateASIN(input) {
+      const v = String(input || '').trim().toUpperCase();
+      const ok = /^[A-Z0-9]{10}$/.test(v);
+      return { ok, value: v };
+    }
+
+    async function searchASIN(asin) {
+      if (!fileLines || fileLines.length === 0) {
+        errorBox.textContent = '请先上传 JSONL 数据文件';
+        errorBox.style.display = 'block';
+        return;
+      }
+      errorBox.style.display = 'none';
+      stat.textContent = '搜索中…';
+      container.innerHTML = '';
+      const cached = cache.get(asin);
+      if (cached) {
+        render([cached]);
+        stat.textContent = `已显示匹配记录（ASIN ${asin}）`;
+        return;
+      }
+      let found = null;
+      for (let i = 0; i < fileLines.length; i++) {
+        const line = fileLines[i];
+        try {
+          const obj = JSON.parse(line);
+          const recASIN = String(obj?.new?.asin || '').toUpperCase();
+          if (recASIN === asin) {
+            found = obj;
+            break;
+          }
+        } catch {}
+      }
+      if (found) {
+        cache.set(asin, found);
+        render([found]);
+        stat.textContent = `已显示匹配记录（ASIN ${asin}）`;
+      } else {
+        errorBox.textContent = '未找到数据';
+        errorBox.style.display = 'block';
+        stat.textContent = '无匹配结果';
+      }
+    }
+
+    asinResetBtn.addEventListener('click', () => {
+      asinInput.value = '';
+      asinSearchBtn.disabled = true;
+      errorBox.style.display = 'none';
+      container.innerHTML = '';
+      if (fileLines && fileLines.length > 0) {
+        stat.textContent = `文件已读取，共 ${fileLines.length} 行。请输入 ASIN 搜索。`;
+      } else {
+        stat.textContent = '未加载数据';
+      }
+    });
+
+    asinInput.addEventListener('input', () => {
+      if (debounceTimer) clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(() => {
+        const { ok } = validateASIN(asinInput.value);
+        asinSearchBtn.disabled = !ok;
+        if (!ok && asinInput.value.trim().length > 0) {
+          errorBox.textContent = '无效 ASIN 格式（需10位大写字母或数字）';
+          errorBox.style.display = 'block';
+        } else {
+          errorBox.style.display = 'none';
+        }
+      }, 300);
+    });
+
+    asinInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        const { ok, value } = validateASIN(asinInput.value);
+        if (ok) searchASIN(value);
+      }
+    });
+
+    asinSearchBtn.addEventListener('click', () => {
+      const { ok, value } = validateASIN(asinInput.value);
+      if (!ok) {
+        errorBox.textContent = '无效 ASIN 格式（需10位大写字母或数字）';
+        errorBox.style.display = 'block';
+        return;
+      }
+      searchASIN(value);
+    });
+
+    // 支持拖拽上传
+    ;(() => {
+      const dropTarget = document.body;
+      const prevent = e => { e.preventDefault(); e.stopPropagation(); };
+      ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(evt => dropTarget.addEventListener(evt, prevent));
+      dropTarget.addEventListener('drop', async (e) => {
+        const file = e.dataTransfer?.files?.[0];
+        if (!file) return;
+        fileInput.files = e.dataTransfer.files;
+        const text = await file.text();
+        fileLines = text.split(/\r?\n/).filter(l => l.trim().length > 0);
+        container.innerHTML = '';
+        cache.clear();
+        stat.textContent = `文件已读取，共 ${fileLines.length} 行。请输入 ASIN 搜索。`;
+      });
+    })();
+  </script>
+</body>
+</html>
