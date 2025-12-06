@@ -15,7 +15,7 @@ import pandas as pd
 CURRENT_DIR = Path(__file__).resolve().parent
 sys.path.append(str(CURRENT_DIR))
 
-from new_release_core import analyze_csv  # noqa: E402
+from new_release_material_core import analyze_csv  # noqa: E402
 
 
 def parse_args():
