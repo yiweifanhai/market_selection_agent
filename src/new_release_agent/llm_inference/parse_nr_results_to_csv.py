@@ -27,6 +27,12 @@ def safe_get(d, path, default=None):
 
 
 def parse_jsonl_to_csv(input_path: Path, output_path: Path):
+    if isinstance(input_path, str):
+        input_path = Path(input_path)
+
+    if isinstance(output_path, str):
+        output_path = Path(output_path)
+
     columns = [
         "id",
         "custom_id",
@@ -56,13 +62,9 @@ def parse_jsonl_to_csv(input_path: Path, output_path: Path):
             try:
                 top = json.loads(line)
                 # extract meta fields first
-                meta_id = top.get("id", "")
                 meta_custom_id = top.get("custom_id", "")
                 meta_error = top.get("error", "")
-                meta_request_id = safe_get(top, ["response", "request_id"], "")
                 meta_status_code = safe_get(top, ["response", "status_code"], "")
-                meta_model = safe_get(top, ["response", "body", "model"], None) or top.get("model", "")
-                meta_created = safe_get(top, ["response", "body", "created"], None) or top.get("created", "")
                 meta_service_tier = safe_get(top, ["response", "body", "service_tier"], None) or top.get("service_tier", "")
 
                 content_str = safe_get(top, ["response", "body", "choices", 0, "message", "content"], None)

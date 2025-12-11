@@ -291,6 +291,15 @@ def analyze_csv(
     items = list(df[required].to_dict(orient="records"))
 
     checkpoint_path = checkpoint_path or Path(f"{input_csv.stem}_checkpoint_nr_material.csv")
+    if isinstance(checkpoint_path, str):
+        checkpoint_path = Path(checkpoint_path)
+
+    if isinstance(image_dir, str):
+        image_dir = Path(image_dir)
+    
+    if isinstance(output_csv, str):
+        output_csv = Path(output_csv)
+
     result_df = analyze_items(
         items=items,
         image_dir=image_dir,

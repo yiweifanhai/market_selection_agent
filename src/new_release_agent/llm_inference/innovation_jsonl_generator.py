@@ -3,8 +3,15 @@ import os
 from typing import List, Dict, Any
 
 # Absolute paths for prompts and input data
-SYSTEM_PROMPT_PATH = "/Users/shuxin/projects/market_selection_agent/src/new_release_agent/llm_inference/system_prompt.md"
-USER_PROMPT_PATH = "/Users/shuxin/projects/market_selection_agent/src/new_release_agent/llm_inference/user_prompt.md"
+import inspect
+current_file_path = inspect.getfile(inspect.currentframe())
+current_file_dir = os.path.dirname(current_file_path)
+
+SYSTEM_PROMPT_PATH = f'{current_file_dir}/system_prompt.md'
+USER_PROMPT_PATH = f'{current_file_dir}/user_prompt.md'
+
+# SYSTEM_PROMPT_PATH = "/Users/shuxin/projects/market_selection_agent/src/new_release_agent/llm_inference/system_prompt.md"
+# USER_PROMPT_PATH = "/Users/shuxin/projects/market_selection_agent/src/new_release_agent/llm_inference/user_prompt.md"
 
 PAIR_DATA_PATH = "/Users/shuxin/projects/market_selection_agent/src/new_release_agent/data/pair_data/nr_bs_pair_1120_2.json"
 OUTPUT_JSONL_PATH = "/Users/shuxin/projects/market_selection_agent/src/new_release_agent/llm_inference/innovation_requests_thinking.jsonl"
@@ -101,13 +108,16 @@ def create_multimodal_messages(system_prompt: str, segments: Dict[str, str], ima
     return {"messages": messages}
 
 
-def generate_requests():
+def generate_requests(
+    pair_data_path: str,
+    output_jsonl_path: str,
+):
     system_prompt = load_text(SYSTEM_PROMPT_PATH)
     user_template = load_text(USER_PROMPT_PATH)
 
     records_written = 0
     done_asin = set()
-    with open(PAIR_DATA_PATH, "r", encoding="utf-8") as fin, open(OUTPUT_JSONL_PATH, "w", encoding="utf-8") as fout:
+    with open(pair_data_path, "r", encoding="utf-8") as fin, open(output_jsonl_path, "w", encoding="utf-8") as fout:
         for line in fin:
             line = line.strip()
             if not line:
@@ -147,7 +157,7 @@ def generate_requests():
             records_written += 1
             done_asin.add(asin)
 
-    print(f"Generated {records_written} requests -> {OUTPUT_JSONL_PATH}")
+    print(f"Generated {records_written} requests -> {output_jsonl_path}")
 
 
 if __name__ == "__main__":
@@ -156,4 +166,7 @@ if __name__ == "__main__":
     OUT = os.environ.get("OUTPUT_JSONL_PATH", OUTPUT_JSONL_PATH)
     PAIR_DATA_PATH = PAIR
     OUTPUT_JSONL_PATH = OUT
-    generate_requests()
+    generate_requests(
+        PAIR_DATA_PATH,
+        OUTPUT_JSONL_PATH,
+    )

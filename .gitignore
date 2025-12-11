@@ -4,3 +4,9 @@
 *.xlsx
 *.jpg
 *.zip
+data/**/*
+temp/**/*
+__pycache__/**/*
+.ipynb_checkpoints/**/*
+.DS_Store
+*.pyc
